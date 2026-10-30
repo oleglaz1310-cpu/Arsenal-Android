@@ -22,7 +22,7 @@ public final class MainActivity extends Activity {
             if (!foreground) return;
             long now = System.nanoTime();
             battle.tick((now - last) / 1_000_000_000f); last = now;
-            status.setText(battle.message); field.invalidate(); field.postDelayed(this, 16);
+            status.setText(battle.message + "\n" + battle.fuelStatus()); field.invalidate(); field.postDelayed(this, 16);
         }
     };
     @Override public void onCreate(Bundle saved) {
@@ -31,10 +31,12 @@ public final class MainActivity extends Activity {
             for (int i = 0; i < battle.units.size(); i++) {
                 battle.units.get(i).x = saved.getFloat("x" + i, battle.units.get(i).x);
                 battle.units.get(i).y = saved.getFloat("y" + i, battle.units.get(i).y);
+                battle.units.get(i).fuel = Math.max(0, Math.min(battle.units.get(i).capacity,
+                    saved.getFloat("fuel" + i, battle.units.get(i).capacity)));
                 int[] route = saved.getIntArray("route" + i);
                 if (route != null) for (int p : route) battle.units.get(i).route.add(p);
             }
-            battle.selected = saved.getInt("selected"); battle.paused = saved.getBoolean("paused");
+            battle.selected = Math.max(0, Math.min(battle.units.size() - 1, saved.getInt("selected"))); battle.paused = saved.getBoolean("paused");
         }
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(17, 25, 29));
@@ -43,10 +45,12 @@ public final class MainActivity extends Activity {
             v.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
                 insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom()); return insets;
         });
-        TextView title = new TextView(this); title.setText("АРСЕНАЛ  /  ПРОТОТИП 0.1");
+        TextView title = new TextView(this); title.setText("АРСЕНАЛ  /  ПРОТОТИП 0.2");
         title.setTextColor(Color.rgb(222, 198, 137)); title.setTextSize(20); title.setPadding(16, 8, 16, 8); root.addView(title);
         field = new Field(); root.addView(field, new LinearLayout.LayoutParams(-1, 0, 1));
         status = new TextView(this); status.setTextColor(Color.WHITE); status.setTextSize(16); status.setPadding(16, 8, 16, 8); root.addView(status);
+        TextView hint = new TextView(this); hint.setText("Жёлтая техника — бензовоз. Подведи его к танку для заправки.");
+        hint.setTextColor(0xFFCCD4D2); hint.setTextSize(12); hint.setPadding(16, 0, 16, 4); root.addView(hint);
         LinearLayout bar = new LinearLayout(this);
         Button pause = new Button(this); pause.setText(battle.paused ? "Продолжить" : "Пауза");
         pause.setOnClickListener(v -> { battle.paused = !battle.paused; pause.setText(battle.paused ? "Продолжить" : "Пауза"); });
@@ -61,6 +65,7 @@ public final class MainActivity extends Activity {
         out.putInt("selected", battle.selected); out.putBoolean("paused", battle.paused);
         for (int i = 0; i < battle.units.size(); i++) {
             Battle.Unit u = battle.units.get(i); out.putFloat("x" + i, u.x); out.putFloat("y" + i, u.y);
+            out.putFloat("fuel" + i, u.fuel);
             int[] route = new int[u.route.size()]; int j = 0; for (int p : u.route) route[j++] = p;
             out.putIntArray("route" + i, route);
         }
@@ -88,9 +93,21 @@ public final class MainActivity extends Activity {
                     paint.setColor(0xFFFFDB80); paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2);
                     c.drawCircle(left+(u.x+.5f)*cell, top+(u.y+.5f)*cell,cell*.48f,paint); paint.setStyle(Paint.Style.FILL);
                 }
-                rect(c,u.x+.14f,u.y+.18f,.72f,.64f,0xFF202B24);
-                rect(c,u.x+.24f,u.y+.12f,.5f,.76f,0xFFA8B979);
-                rect(c,u.x+.34f,u.y+.32f,.65f,.15f,0xFFD5D5A2);
+                if (u.type == Battle.FUEL_TRUCK) {
+                    rect(c,u.x+.12f,u.y+.21f,.76f,.58f,0xFF444431);
+                    rect(c,u.x+.2f,u.y+.23f,.47f,.48f,0xFFE2C764);
+                    rect(c,u.x+.7f,u.y+.3f,.17f,.31f,0xFFE8E9DD);
+                } else {
+                    rect(c,u.x+.14f,u.y+.18f,.72f,.64f,0xFF202B24);
+                    rect(c,u.x+.24f,u.y+.12f,.5f,.76f,0xFFA8B979);
+                    rect(c,u.x+.34f,u.y+.32f,.65f,.15f,0xFFD5D5A2);
+                }
+                float fx = left + (u.x + .12f) * cell, fy = top + (u.y + .91f) * cell;
+                paint.setColor(0xFF1C2424);
+                c.drawRect(fx, fy, fx + .76f * cell, fy + .09f * cell, paint);
+                paint.setColor(u.fuel < u.capacity * .25f ? 0xFFF16C4D : 0xFF8BD18B);
+                c.drawRect(fx, fy, fx + .76f * cell * (u.fuel / u.capacity),
+                    fy + .09f * cell, paint);
             }
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
